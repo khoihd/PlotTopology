@@ -1,4 +1,5 @@
 import os
+from glob import glob
 from os import listdir, walk
 from os.path import isfile, join
 import Request
@@ -7,7 +8,7 @@ import zipfile
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-import plotly.figure_factory as ff
+# import plotly.figure_factory as ff
 from matplotlib.backends.backend_pdf import PdfPages
 import networkx as nx
 from graphviz import Graph
@@ -97,7 +98,7 @@ def update_total_demand(total_demand, run, client, demand):
 
 def getRequestsOverTime(algorithm, instance_path):
     start_time = 30000
-    time_between_batches = 90000
+    time_between_batches = 60000
 
     zip_file = instance_path + "/" + algorithm + "_output.zip"
     output_folder = instance_path + "/output"
@@ -122,7 +123,7 @@ def getRequestsOverTime(algorithm, instance_path):
                 if "startTime" in line:
                     line = line.replace("\"startTime\" : ", "")
                     line = line.replace(",", "")
-                    run = (int(line) - start_time) / time_between_batches + 1
+                    run = (int(line) - start_time) // time_between_batches + 1
                     # run = int(line)
                 if "ncpContacted" in line:
                     line = f.readline() # read the next line
@@ -138,9 +139,9 @@ def getRequestsOverTime(algorithm, instance_path):
                     service = line.replace(",", "")
                 elif "serverResult" in line:
                     if "SUCCESS" in line or "SLOW" in line:
-                        increment_over_time(result_over_time, region, run, SUCCESS, datacenter)
+                        increment_over_time(result_over_time, region, run, SUCCESS)
                     elif "FAIL" in line:
-                        increment_over_time(result_over_time, region, run, FAILURE, datacenter)
+                        increment_over_time(result_over_time, region, run, FAILURE)
                 line = f.readline()
 
     total_success = 0
@@ -174,7 +175,7 @@ def getRequestsOverTime(algorithm, instance_path):
     return success, region_success_fail, aggregate_request, result_over_time
 
 
-def increment_over_time(over_time, region, run, flag, datacenter):
+def increment_over_time(over_time, region, run, flag):
     # if region != datacenter:
     #     return
 
@@ -214,7 +215,7 @@ def total_regions(over_time, region, req):
 def plot():
     algorithm = "RDIFF"
     agent = 10
-    (topology, instance) = ( "scale-free-tree", 0)
+    (topology, instance) = ("scale-free-tree", 0)
     # (topology, instance) = ("random-network", 1)
     topology_file = path + "/" + algorithm + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
     topology_file += "/topology.ns"
@@ -251,7 +252,7 @@ def generate_plot(topology_file):
                 add_node(graph, node_two)
 
                 add_edge(graph, node_one, node_two, node_edge)
-    # print(graph.source)
+    print(graph.source)
     return graph
 
 
@@ -378,14 +379,57 @@ def read_and_plot_demand(alg, threshold, instance_path):
     return demand_to_plot
 
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    algorithms = ["RDIFF", "RC-DIFF"]
+if __name__ == "__main__plot_topology":
+    path = "/Users/khoihd/Documents/workspace/CP-19/"
+    (topology, instance) = ("scale-free-tree", 0)
+    agent = 20
+    instance_path = path + topology + "/d" + str(agent) + "/" + str(instance)
+    instance_path += "/topology.ns"
+    graph = generate_plot(instance_path)
+    graph.view()
 
-    threshold_path = "/Users/khoihd/Documents/workspace/CP-19/threshold="
+
+# Press the green button in the gutter to run the script.
+def unzip_output(instance_path_unzip, alg):
+    zip_file = instance_path_unzip + "/" + alg + "_output.zip"
+    output_folder = instance_path_unzip + "/output"
+
+    if os.path.exists(zip_file) and not os.path.exists(output_folder):
+        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+            zip_ref.extractall(instance_path_unzip)
+
+
+if __name__ == '__main__':
+    # table_path = "/Users/khoihd/Documents/workspace/CP-19/table_0.7"
+    table_path = "/Users/khoihd/Documents/workspace/CP-19/hardcode_table_0.7"
+    algorithms = ["RDIFF"]
+    agents = [10]
+    (topology, instances) = ("scale-free-tree", range(1, 4))
+    # (topology, instances) = ("random-network", range(0, 3))
+
+    for agent in agents:
+        for alg in algorithms:
+            avg_request = Request.Request()
+            for instance in instances:
+                instance_path = table_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+                print(instance_path)
+                unzip_output(instance_path, alg)
+                _, _, request_total, _ = getRequestsOverTime(alg, instance_path)
+                avg_request.success += request_total.success
+                avg_request.fail += request_total.fail
+            print(avg_request)
+
+
+
+if __name__ == '__main__instance':
+    # algorithms = ["RDIFF", "RC-DIFF"]
+    algorithms = ["RC-DIFF"]
+
+    threshold_path = "/Users/khoihd/Documents/workspace/CP-19/"
     agent = 10
-    # (topology, instance, datacenter) = ("scale-free-tree", 0, 'A')
-    (topology, instance, datacenter) = ("random-network", 1, 'B')
+    (topology, instance) = ("scale-free-tree", 0)
+    # (topology, instance) = ("random-network", 1)
+    # (topology, instance, datacenter) = ("random-network", 1, 'B')
 
     # # remove current output folders and get it from yachay
     # for alg in algorithms:
@@ -399,57 +443,63 @@ if __name__ == '__main__':
 
     # read_and_plot_requests()
     # read_and_print_requests()
-    requests_dict = dict()
-    for threshold_val in [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
+    # requests_dict = dict()
+
+    # for threshold_val in [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]:
+    # topology = 'random-network'
+    # topology = 'scale-free-tree'
+    # for threshold_val in [0.5]:
+    for threshold_val in ["0.7"]:
         threshold = str(threshold_val)
         # plot demand values over time
+        request_all_instances = Request.Request()
         for alg in algorithms:
-            instance_path = threshold_path + threshold + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
-            print(instance_path)
-            demand = read_and_plot_demand(alg, threshold, instance_path)
-            demand['Total'] = demand.sum(1)
-            print(demand)
-            fig, ax = plt.subplots()
-            ax.plot(demand)
-            ax.set_xticks(range(0, 10))
-            ax.set_xticklabels(range(1, 11), fontsize=10)
-            ax.legend(demand.columns)
-            ax.set_title("Demand over time for " + alg + " with threshold=" + threshold)
-            fig.savefig("demand_plot_" + alg + "_" + threshold + ".pdf")
+            # for instance in range(0):
+            for instance in [0]:
+                instance_path = threshold_path + "hardcode_threshold=" + threshold + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+                print(instance_path)
+                unzip_output(instance_path, alg)
+                demand = read_and_plot_demand(alg, threshold, instance_path)
+                demand['Total'] = demand.sum(1)
+                print(demand)
+                fig, ax = plt.subplots()
+                ax.plot(demand)
+                ax.set_xticks(range(0, 15))
+                ax.set_xticklabels(range(1, 16), fontsize=10)
+                ax.set_xlabel("DCOP Run")
+                ax.set_ylabel("Demand value")
+                ax.legend(demand.columns)
+                ax.set_title("Demand over time for " + alg + " with threshold=" + threshold)
+                fig.savefig("demand_plot_" + alg + "_" + threshold + ".pdf")
+                demand.to_csv("demand_" + alg + "_" + threshold + ".csv")
 
 
-        # get the number of successful / failed requests
-        for alg in algorithms:
-            instance_path = threshold_path + threshold + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
-            print(instance_path)
-            _, request_regions, request_total, request_overtime = getRequestsOverTime(alg, instance_path)
+            # get the number of successful / failed requests
+            # for alg in algorithms:
+            #     instance_path = threshold_path + "threshold=" + threshold + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+                print(instance_path)
+                _, request_regions, request_total, request_overtime = getRequestsOverTime(alg, instance_path)
 
-            request_alg = dict()
-            if threshold in requests_dict:
-                request_alg = requests_dict[threshold]
+                df_request = pd.DataFrame(request_overtime)
+                df_request.index = "Region " + df_request.index
+                df_request.T.to_csv(alg + ".csv")
+                for run, info in request_overtime.items():
+                    print("============================")
+                    print("run =", run)
+                    print("info =", info)
+                    success = 0
+                    fail = 0
+                    for region, request in info.items():
+                        success += request.success
+                        fail += request.fail
+                    print("success =", success)
+                    print("fail =", fail)
+                    print("total =", success + fail)
 
-            request_alg[alg] = request_total
-            requests_dict[threshold] = request_alg
+                print(request_regions)
+                print(request_total)
+                print(request_total.success / (request_total.success + request_total.fail) * 100, "%")
 
-    pd.DataFrame(requests_dict).to_csv("Successful_Rate.csv")
-
-            # df_request = pd.DataFrame(request_overtime)
-            # df_request.index = "Region " + df_request.index
-            # df_request.T.to_csv(alg + ".csv")
-            # for run, info in request_overtime.items():
-            #     print("run =", run)
-            #     print("info =", info)
-            #     success = 0
-            #     fail = 0
-            #     for region, request in info.items():
-            #         success += request.success
-            #         fail += request.fail
-            #     print("success =", success)
-            #     print("fail =", fail)
-            #     print("total =", success + fail)
-            #
-            # print(request_regions)
-            # print(request_total)
-            # print(request_total.success / (request_total.success + request_total.fail) * 100, "%")
-
+                request_all_instances.success += request_total.success
+                request_all_instances.fail += request_total.fail
 
