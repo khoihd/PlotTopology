@@ -393,19 +393,95 @@ if __name__ == "__main__plot_topology":
 def unzip_output(instance_path_unzip, alg):
     zip_file = instance_path_unzip + "/" + alg + "_output.zip"
     output_folder = instance_path_unzip + "/output"
+    os.system("rm -rf " + output_folder)
 
-    if os.path.exists(zip_file) and not os.path.exists(output_folder):
-        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-            zip_ref.extractall(instance_path_unzip)
+    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+        zip_ref.extractall(instance_path_unzip)
 
 
-if __name__ == '__main__':
+def get_all_clients(instance_path):
+    clients = set()
+    for folder in os.listdir(instance_path + "/output"):
+        if "clientPool" in folder:
+            clients.add(folder.replace("clientPool", ""))
+
+    return clients
+
+# 2020-12-13/08:14:50.410/-0600 [DCOP-nodeA] INFO com.bbn.map.dcop.AbstractDcopAlgorithm [] {}- DCOP Run 1 Region Plan Region A: {AppCoordinates {com.bbn, test-service1, 1}={A=1.0, D=0.0, G=0.0, I=0.0, J=0.0, M=0.0}}
+# 2020-12-13/08:14:50.570/-0600 [DCOP-nodeI] INFO com.bbn.map.dcop.AbstractDcopAlgorithm [] {}- DCOP Run 1 Region Plan Region I: RegionPlan [ region: I timestamp: 0 plan: {} ]
+def compute_alg_capacity(instance_path, alg, agent_count):
+    log_file = instance_path + "/output/map.log"
+    client_set = get_all_clients(instance_path)
+
+    run_dict = dict()
+    with open(log_file) as f:
+        for line in f.readlines():
+            if "Region Plan" in line:
+                line = line.split("{}- ")[1] # Remove the previous content
+                dcop_run_regex = "DCOP Run [0-9]+"
+                region_regex = "Region Plan Region [A-Z]"
+                plan_regex = "[A-Z]+=[0-1].[0-9]*"
+
+                dcop_run = int(re.findall(dcop_run_regex, line)[0].replace("DCOP Run ", ""))
+                if dcop_run not in run_dict:
+                    run_dict[dcop_run] = set()
+
+                region = re.findall(region_regex, line)[0].replace("Region Plan Region ", "")
+                if region in client_set:
+                    run_dict[dcop_run].add(region)
+
+                if "AppCoordinates" in line:
+                    plans = re.findall(plan_regex, line)
+                    for plan in plans:
+                        neighbor = plan.split("=")[0]
+                        ratio = float(plan.split("=")[1])
+                        if ratio > 0:
+                            run_dict[dcop_run].add(neighbor)
+    total_non_zero_region = 0
+    max_non_zero_region = 0
+    for _, non_zero_region in run_dict.items():
+        num_region = len(non_zero_region)
+        total_non_zero_region += num_region
+        max_non_zero_region = max(max_non_zero_region, num_region)
+    
+    return total_non_zero_region / len(run_dict), max_non_zero_region
+
+
+if __name__ == "__main__":
+    capacity_path = "/Users/khoihd/Downloads/hardcode_comparison_new_config"
+    # capacity_path = "/Users/khoihd/Downloads/comparison_new_config"
+    algorithms = ["RC-DIFF"]
+    agents = [15]
+    # (topology, instances) = ("scale-free-tree", range(0, 10))
+    (topology, instances) = ("random-network", range(10))
+    for agent in agents:
+        for alg in algorithms:
+            total_avg_cap = 0
+            total_max_cap = 0
+            for instance in instances:
+                instance_path = capacity_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+                print(instance_path)
+                unzip_output(instance_path, alg)
+                avg_cap, max_cap = compute_alg_capacity(instance_path, alg, agent)
+                print(avg_cap, max_cap)
+                total_avg_cap += avg_cap
+                total_max_cap += max_cap
+
+            print("Average total algorithm capacity =", total_avg_cap/len(instances) * 20)
+            print("Average max algorithm capacity =", total_max_cap/len(instances) * 20)
+
+
+if __name__ == '__main__table':
     # table_path = "/Users/khoihd/Documents/workspace/CP-19/table_0.7"
-    table_path = "/Users/khoihd/Documents/workspace/CP-19/hardcode_table_0.7"
-    algorithms = ["RDIFF"]
+    # table_path = "/Users/khoihd/Documents/workspace/CP-19/hardcode_table_0.7"
+    # table_path = "/Users/khoihd/Documents/workspace/CP-19/capacity_table_0.7"
+    # table_path = "/Users/khoihd/Downloads/hardcode_comparison_new_config"
+    table_path = "/Users/khoihd/Downloads/comparison_new_config"
+
+    algorithms = ["RC-DIFF"]
     agents = [10]
-    (topology, instances) = ("scale-free-tree", range(1, 4))
-    # (topology, instances) = ("random-network", range(0, 3))
+    (topology, instances) = ("scale-free-tree", range(0, 10))
+    # (topology, instances) = ("random-network", range(10))
 
     for agent in agents:
         for alg in algorithms:
@@ -417,6 +493,9 @@ if __name__ == '__main__':
                 _, _, request_total, _ = getRequestsOverTime(alg, instance_path)
                 avg_request.success += request_total.success
                 avg_request.fail += request_total.fail
+                # print(request_total)
+            avg_request.success = int(avg_request.success / len(instances))
+            avg_request.fail = int(avg_request.fail / len(instances))
             print(avg_request)
 
 
@@ -425,10 +504,10 @@ if __name__ == '__main__instance':
     # algorithms = ["RDIFF", "RC-DIFF"]
     algorithms = ["RC-DIFF"]
 
-    threshold_path = "/Users/khoihd/Documents/workspace/CP-19/"
-    agent = 10
-    (topology, instance) = ("scale-free-tree", 0)
-    # (topology, instance) = ("random-network", 1)
+    threshold_path = "/Users/khoihd/Downloads/hardcode_comparison_new_config"
+    agent = 15
+    # (topology, instance) = ("scale-free-tree", 0)
+    (topology, instance) = ("random-network", 4)
     # (topology, instance, datacenter) = ("random-network", 1, 'B')
 
     # # remove current output folders and get it from yachay
@@ -455,8 +534,8 @@ if __name__ == '__main__instance':
         request_all_instances = Request.Request()
         for alg in algorithms:
             # for instance in range(0):
-            for instance in [0]:
-                instance_path = threshold_path + "hardcode_threshold=" + threshold + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+            for instance in [4]:
+                instance_path = threshold_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
                 print(instance_path)
                 unzip_output(instance_path, alg)
                 demand = read_and_plot_demand(alg, threshold, instance_path)
