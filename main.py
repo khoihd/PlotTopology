@@ -227,6 +227,7 @@ def plot():
 def generate_plot(topology_file):
     graph = Graph("topology", filename='topology.gv', engine='neato')
     # graph = Graph("topology", filename='topology.gv', engine='neato', outputorder = 'breadthfirst')
+    delay_re = "[0-9]+.0ms"
     server_id = ""
     # Add color to server node
     # Add color to client node
@@ -242,7 +243,7 @@ def generate_plot(topology_file):
 
                 add_node(graph, node)
                 add_node(graph, client)
-                add_edge(graph, node, client, client_edge)
+                add_edge(graph, node, client, client_edge, str(1))
             elif line.startswith("set link"):
                 line = line.replace("set link", "")
                 node_one = server(line[0], server_id)
@@ -251,8 +252,11 @@ def generate_plot(topology_file):
                 add_node(graph, node_one)
                 add_node(graph, node_two)
 
-                add_edge(graph, node_one, node_two, node_edge)
+                label = re.findall(delay_re, line)[0]
+                add_edge(graph, node_one, node_two, node_edge, label)
     print(graph.source)
+    graph.save()
+    graph.render('topology')
     return graph
 
 
@@ -265,8 +269,8 @@ def add_node(graph, node):
         graph.node(node, style='filled', fillcolor=node_color)
 
 
-def add_edge(graph, node_one, node_two, edge_length):
-    graph.edge(node_one, node_two, len=str(edge_length))
+def add_edge(graph, node_one, node_two, edge_length, label):
+    graph.edge(node_one, node_two, len=str(edge_length), label=label)
 
 
 def server(node_id, server_id):
@@ -389,7 +393,6 @@ if __name__ == "__main__plot_topology":
     graph.view()
 
 
-# Press the green button in the gutter to run the script.
 def unzip_output(instance_path_unzip, alg):
     zip_file = instance_path_unzip + "/" + alg + "_output.zip"
     output_folder = instance_path_unzip + "/output"
@@ -407,9 +410,10 @@ def get_all_clients(instance_path):
 
     return clients
 
+
 # 2020-12-13/08:14:50.410/-0600 [DCOP-nodeA] INFO com.bbn.map.dcop.AbstractDcopAlgorithm [] {}- DCOP Run 1 Region Plan Region A: {AppCoordinates {com.bbn, test-service1, 1}={A=1.0, D=0.0, G=0.0, I=0.0, J=0.0, M=0.0}}
 # 2020-12-13/08:14:50.570/-0600 [DCOP-nodeI] INFO com.bbn.map.dcop.AbstractDcopAlgorithm [] {}- DCOP Run 1 Region Plan Region I: RegionPlan [ region: I timestamp: 0 plan: {} ]
-def compute_alg_capacity(instance_path, alg, agent_count):
+def compute_capacity(instance_path, alg, agent_count):
     log_file = instance_path + "/output/map.log"
     client_set = get_all_clients(instance_path)
 
@@ -447,12 +451,14 @@ def compute_alg_capacity(instance_path, alg, agent_count):
     return total_non_zero_region / len(run_dict), max_non_zero_region
 
 
-if __name__ == "__main__":
-    capacity_path = "/Users/khoihd/Downloads/hardcode_comparison_new_config"
+# Compute the aggregate capacities of regions that are involved in the DCOP plan
+def compute_alg_capacity():
+    # capacity_path = "/Users/khoihd/Downloads/hardcode_comparison_new_config"
     # capacity_path = "/Users/khoihd/Downloads/comparison_new_config"
+    capacity_path = "/Users/khoihd/Downloads/MAP_khoi_changes/comparison_new_config"
     algorithms = ["RC-DIFF"]
-    agents = [15]
-    # (topology, instances) = ("scale-free-tree", range(0, 10))
+    agents = [5, 10, 15]
+    # (topology, instances) = ("scale-free-tree", range(10))
     (topology, instances) = ("random-network", range(10))
     for agent in agents:
         for alg in algorithms:
@@ -462,27 +468,55 @@ if __name__ == "__main__":
                 instance_path = capacity_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
                 print(instance_path)
                 unzip_output(instance_path, alg)
-                avg_cap, max_cap = compute_alg_capacity(instance_path, alg, agent)
-                print(avg_cap, max_cap)
+                avg_cap, max_cap = compute_capacity(instance_path, alg, agent)
                 total_avg_cap += avg_cap
                 total_max_cap += max_cap
 
-            print("Average total algorithm capacity =", total_avg_cap/len(instances) * 20)
+            # print("Average total algorithm capacity =", total_avg_cap/len(instances) * 20)
             print("Average max algorithm capacity =", total_max_cap/len(instances) * 20)
 
 
-if __name__ == '__main__table':
-    # table_path = "/Users/khoihd/Documents/workspace/CP-19/table_0.7"
-    # table_path = "/Users/khoihd/Documents/workspace/CP-19/hardcode_table_0.7"
-    # table_path = "/Users/khoihd/Documents/workspace/CP-19/capacity_table_0.7"
-    # table_path = "/Users/khoihd/Downloads/hardcode_comparison_new_config"
-    table_path = "/Users/khoihd/Downloads/comparison_new_config"
+def get_success_ratio(instance_path):
+    simulation_folder = instance_path + "/output/simulation"
+    total_success = 0
+    for root, folders, files in os.walk(simulation_folder):
+        for file in files:
+            if "final-state.json" in file:
+                with open(root + "/" +  file, 'r') as f:
+                    for line in f.readlines():
+                        if "numRequestsSucceeded" in line:
+                            line = line.replace('"numRequestsSucceeded" : ', '').replace(',', '')
+                            line = line.replace(' ', '')
+                            total_success += int(line)
+
+    return round(total_success / 18000.0 * 100.0, 2)
+
+
+# Compute the result to fill up the table
+def get_s_f(over_time_result, cutoff_ts):
+    total_s = 0
+    total_f = 0
+    for time_step, region_sf in over_time_result.items():
+        if time_step >= cutoff_ts:
+            for region, region_rq in region_sf.items():
+                total_s += region_rq.success
+                total_f += region_rq.fail
+
+    return total_s, total_f
+
+
+def compute_result_table():
+    # table_path = "/Users/khoihd/Downloads/hardcode_toy_test"
+    # table_path = "/Users/khoihd/Downloads/MAP/hardcode_comparison_new_config"
+    # table_path = "/Users/khoihd/Downloads/MAP_updated_changes/comparison_new_config"
+    table_path = "/Users/khoihd/Downloads/MAP_khoi_changes/comparison_new_config"
 
     algorithms = ["RC-DIFF"]
     agents = [10]
-    (topology, instances) = ("scale-free-tree", range(0, 10))
+    (topology, instances) = ("scale-free-tree", range(1))
     # (topology, instances) = ("random-network", range(10))
 
+    cutoff_timestep = 16
     for agent in agents:
         for alg in algorithms:
             avg_request = Request.Request()
@@ -490,17 +524,37 @@ if __name__ == '__main__table':
                 instance_path = table_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
                 print(instance_path)
                 unzip_output(instance_path, alg)
-                _, _, request_total, _ = getRequestsOverTime(alg, instance_path)
-                avg_request.success += request_total.success
-                avg_request.fail += request_total.fail
+                _, region_result, request_total, over_time_result = getRequestsOverTime(alg, instance_path)
+
+                cutoff_success, cutoff_fail = get_s_f(over_time_result, cutoff_timestep)
+                print("success={}, total={}, ratio={}".format(cutoff_success, cutoff_success + cutoff_fail, cutoff_success / (cutoff_success + cutoff_fail) * 100))
+                for run, result in over_time_result.items():
+                    print(run, result)
+
+                # avg_request.success += request_total.success
+                # avg_request.fail += request_total.fail
+                avg_request.success += cutoff_success
+                avg_request.fail += cutoff_fail
+
+                new_rate = get_success_ratio(instance_path)
+                # print("New success rate {}%".format(new_rate))
                 # print(request_total)
+                # print(region_result)
+                # print(over_time_result)
+                over_time_dict = {}
+                for run, region_dict in over_time_result.items():
+                    over_time_dict[run] = Request.Request()
+                    for region, request in region_dict.items():
+                        over_time_dict[run].success += request.success
+                        over_time_dict[run].fail += request.fail
+                # print(over_time_dict)
+
             avg_request.success = int(avg_request.success / len(instances))
             avg_request.fail = int(avg_request.fail / len(instances))
             print(avg_request)
 
 
-
-if __name__ == '__main__instance':
+def compute_result_single_instance():
     # algorithms = ["RDIFF", "RC-DIFF"]
     algorithms = ["RC-DIFF"]
 
@@ -582,3 +636,10 @@ if __name__ == '__main__instance':
                 request_all_instances.success += request_total.success
                 request_all_instances.fail += request_total.fail
 
+
+if __name__ == "__main__":
+    compute_alg_capacity()
+    # compute_result_single_instance
+    # compute_result_table()
+    # plot_topology = "/Users/khoihd/Downloads/test_ordering_tuple/scenario-0-link-delays/topology.ns"
+    # graph = generate_plot(plot_topology)
