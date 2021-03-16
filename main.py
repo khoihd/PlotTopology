@@ -21,8 +21,8 @@ yachay_path = "khoi.hoang@yachay.seas.wustl.edu:/home/research/khoi.hoang/compar
 server_color = "red"
 client_color = "green"
 node_color = "grey"
-client_edge = 1.5
-node_edge = 1
+client_edge = 2
+node_edge = 3
 
 
 def get_demand(algorithm, instance_path_demand):
@@ -62,10 +62,13 @@ def get_demand(algorithm, instance_path_demand):
                 # print(line)
 
                 # server_demand_regex = re.findall("AppCoordinates \{com.bbn, test-service[0-9], 1\}=\{[A-Z]+=\{NodeAttribute \{QueueLength, true\}=([0-9]+\.[0-9]+), NodeAttribute \{TASK_CONTAINERS, false\}=([0-9]+\.[0-9]+)", line)
-                server_demand_matches = re.findall("[A-Z]+=\{NodeAttribute \{QueueLength, true\}=[0-9]+\.[0-9]+, NodeAttribute \{TASK_CONTAINERS, false\}=[0-9]+\.[0-9]+", line)
+                server_demand_matches = re.findall(
+                    "[A-Z]+=\{NodeAttribute \{QueueLength, true\}=[0-9]+\.[0-9]+, NodeAttribute \{TASK_CONTAINERS, false\}=[0-9]+\.[0-9]+",
+                    line)
                 for client_demand in server_demand_matches:
                     client = client_demand[0]
-                    demand = re.search("\{TASK_CONTAINERS, false\}=[0-9]+.[0-9]+", client_demand).group(0).replace("{TASK_CONTAINERS, false}=", "")
+                    demand = re.search("\{TASK_CONTAINERS, false\}=[0-9]+.[0-9]+", client_demand).group(0).replace(
+                        "{TASK_CONTAINERS, false}=", "")
                     # print(client, demand)
                     update_total_demand(total_demand, run, "ClientPool-" + client, demand)
         # for run, demand in total_demand.items():
@@ -126,7 +129,7 @@ def getRequestsOverTime(algorithm, instance_path):
                     run = (int(line) - start_time) // time_between_batches + 1
                     # run = int(line)
                 if "ncpContacted" in line:
-                    line = f.readline() # read the next line
+                    line = f.readline()  # read the next line
                     line = line.replace(" ", "")
                     line = line.replace("\"", "")
                     region = line.replace("name:node", "")[0]
@@ -257,6 +260,7 @@ def generate_plot(topology_file):
     print(graph.source)
     graph.save()
     graph.render('topology')
+
     return graph
 
 
@@ -365,7 +369,8 @@ def read_and_plot_demand(alg, threshold, instance_path):
     # rdiff_table = ax.table(cellText=rdiff.values, colLabels="ClientPool-" + rdiff.columns, rowLabels=rdiff.index, bbox=[0, 0, 1.75, 0.75], cellLoc='center')
     # rdiff_table = ax.table(cellText=rdiff.values, colLabels="ClientPool-" + rdiff.columns, rowLabels=rdiff.index,
     #                        bbox=[0, 0, 1, 1], cellLoc='center')
-    rdiff_table = ax.table(cellText=demand_to_plot.values, colLabels="ClientPool-" + demand_to_plot.columns, rowLabels=demand_to_plot.index, bbox=[0, 0, 1, 1])
+    rdiff_table = ax.table(cellText=demand_to_plot.values, colLabels="ClientPool-" + demand_to_plot.columns,
+                           rowLabels=demand_to_plot.index, bbox=[0, 0, 1, 1])
     rdiff_table.auto_set_font_size(False)
     rdiff_table.set_fontsize(44)
     # fig.savefig("RDIFF_demand.pdf", bbox_inches='tight', orientation='landscape')
@@ -379,7 +384,7 @@ def read_and_plot_demand(alg, threshold, instance_path):
     #
     # print(rdiff)
     # print(rc_diff)
-    
+
     return demand_to_plot
 
 
@@ -413,7 +418,7 @@ def get_all_clients(instance_path):
 
 # 2020-12-13/08:14:50.410/-0600 [DCOP-nodeA] INFO com.bbn.map.dcop.AbstractDcopAlgorithm [] {}- DCOP Run 1 Region Plan Region A: {AppCoordinates {com.bbn, test-service1, 1}={A=1.0, D=0.0, G=0.0, I=0.0, J=0.0, M=0.0}}
 # 2020-12-13/08:14:50.570/-0600 [DCOP-nodeI] INFO com.bbn.map.dcop.AbstractDcopAlgorithm [] {}- DCOP Run 1 Region Plan Region I: RegionPlan [ region: I timestamp: 0 plan: {} ]
-def compute_capacity(instance_path, alg, agent_count):
+def compute_capacity(instance_path, alg, agent_count, cutoff):
     log_file = instance_path + "/output/map.log"
     client_set = get_all_clients(instance_path)
 
@@ -421,7 +426,7 @@ def compute_capacity(instance_path, alg, agent_count):
     with open(log_file) as f:
         for line in f.readlines():
             if "Region Plan" in line:
-                line = line.split("{}- ")[1] # Remove the previous content
+                line = line.split("{}- ")[1]  # Remove the previous content
                 dcop_run_regex = "DCOP Run [0-9]+"
                 region_regex = "Region Plan Region [A-Z]"
                 plan_regex = "[A-Z]+=[0-1].[0-9]*"
@@ -443,37 +448,41 @@ def compute_capacity(instance_path, alg, agent_count):
                             run_dict[dcop_run].add(neighbor)
     total_non_zero_region = 0
     max_non_zero_region = 0
-    for _, non_zero_region in run_dict.items():
-        num_region = len(non_zero_region)
-        total_non_zero_region += num_region
-        max_non_zero_region = max(max_non_zero_region, num_region)
-    
-    return total_non_zero_region / len(run_dict), max_non_zero_region
+    run_count = 0
+    for run, non_zero_region in run_dict.items():
+        if run >= cutoff:
+            run_count += 1
+            num_region = len(non_zero_region)
+            total_non_zero_region += num_region
+            max_non_zero_region = max(max_non_zero_region, num_region)
+
+    return total_non_zero_region / run_count, max_non_zero_region
 
 
 # Compute the aggregate capacities of regions that are involved in the DCOP plan
 def compute_alg_capacity():
-    # capacity_path = "/Users/khoihd/Downloads/hardcode_comparison_new_config"
-    # capacity_path = "/Users/khoihd/Downloads/comparison_new_config"
-    capacity_path = "/Users/khoihd/Downloads/MAP_khoi_changes/comparison_new_config"
+    # capacity_path = "/Users/khoihd/Downloads/MAP_fix_compare/comparison_new_config"
+    capacity_path = "/Users/khoihd/Downloads/MAP_fix_compare/hardcode_comparison_new_config"
     algorithms = ["RC-DIFF"]
     agents = [5, 10, 15]
-    # (topology, instances) = ("scale-free-tree", range(10))
-    (topology, instances) = ("random-network", range(10))
+    # (topology, instances) = ("random-network", range(5))
+    (topology, instances) = ("scale-free-tree", range(5))
+    cutoff_ts = 7
     for agent in agents:
         for alg in algorithms:
             total_avg_cap = 0
             total_max_cap = 0
             for instance in instances:
-                instance_path = capacity_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+                instance_path = capacity_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(
+                    instance)
                 print(instance_path)
                 unzip_output(instance_path, alg)
-                avg_cap, max_cap = compute_capacity(instance_path, alg, agent)
+                avg_cap, max_cap = compute_capacity(instance_path, alg, agent, cutoff_ts)
                 total_avg_cap += avg_cap
                 total_max_cap += max_cap
 
-            # print("Average total algorithm capacity =", total_avg_cap/len(instances) * 20)
-            print("Average max algorithm capacity =", total_max_cap/len(instances) * 20)
+            print("Average total algorithm capacity =", total_avg_cap / len(instances) * 20)
+            print("Average max algorithm capacity =", total_max_cap / len(instances) * 20)
 
 
 def get_success_ratio(instance_path):
@@ -482,7 +491,7 @@ def get_success_ratio(instance_path):
     for root, folders, files in os.walk(simulation_folder):
         for file in files:
             if "final-state.json" in file:
-                with open(root + "/" +  file, 'r') as f:
+                with open(root + "/" + file, 'r') as f:
                     for line in f.readlines():
                         if "numRequestsSucceeded" in line:
                             line = line.replace('"numRequestsSucceeded" : ', '').replace(',', '')
@@ -506,35 +515,41 @@ def get_s_f(over_time_result, cutoff_ts):
 
 
 def compute_result_table():
-    # table_path = "/Users/khoihd/Downloads/hardcode_toy_test"
-    # table_path = "/Users/khoihd/Downloads/MAP/hardcode_comparison_new_config"
-    # table_path = "/Users/khoihd/Downloads/MAP_updated_changes/comparison_new_config"
-    table_path = "/Users/khoihd/Downloads/MAP_khoi_changes/comparison_new_config"
+    # table_path = "/Users/khoihd/Downloads/MAP_test/g_stable_tree_fix_5/comparison_new_config"
+    # table_path = "/Users/khoihd/Downloads/MAP_test/g_stable_tree_fix_5/hardcode_comparison_new_config"
+    table_path = "/Users/khoihd/Downloads/MAP_test/MAP_timestamp/hardcode_comparison_new_config"
+    # table_path = "/Users/khoihd/Downloads/MAP_test/null_pointer_test_run/hardcode_comparison_new_config"
 
     algorithms = ["RC-DIFF"]
-    agents = [10]
-    (topology, instances) = ("scale-free-tree", range(1))
-    # (topology, instances) = ("random-network", range(10))
+    agents = [5, 10, 15, 20]
+    # (topology, instances) = ("scale-free-tree", range(10))
+    (topology, instances) = ("random-network", range(1))
 
     cutoff_timestep = 16
     for agent in agents:
         for alg in algorithms:
             avg_request = Request.Request()
             for instance in instances:
-                instance_path = table_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+                instance_path = table_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(
+                    instance)
                 print(instance_path)
                 unzip_output(instance_path, alg)
                 _, region_result, request_total, over_time_result = getRequestsOverTime(alg, instance_path)
 
                 cutoff_success, cutoff_fail = get_s_f(over_time_result, cutoff_timestep)
-                print("success={}, total={}, ratio={}".format(cutoff_success, cutoff_success + cutoff_fail, cutoff_success / (cutoff_success + cutoff_fail) * 100))
-                for run, result in over_time_result.items():
-                    print(run, result)
+                # print("success={}, total={}, ratio={}".format(cutoff_success, cutoff_success + cutoff_fail, cutoff_success / (cutoff_success + cutoff_fail) * 100))
+                # for run, result in over_time_result.items():
+                #     rate_list = []
+                #     for region, req in result.items():
+                #         rate_list.append(req.success / (req.success + req.fail))
+                #     print(run, result, flush=True)
+                #     print(run, np.mean(rate_list) * 100)
 
                 # avg_request.success += request_total.success
                 # avg_request.fail += request_total.fail
                 avg_request.success += cutoff_success
                 avg_request.fail += cutoff_fail
+                print("{}".format(cutoff_success / (cutoff_fail + cutoff_success) * 100))
 
                 new_rate = get_success_ratio(instance_path)
                 # print("New success rate {}%".format(new_rate))
@@ -549,8 +564,9 @@ def compute_result_table():
                         over_time_dict[run].fail += request.fail
                 # print(over_time_dict)
 
+            total = int((avg_request.success + avg_request.fail) / len(instances))
             avg_request.success = int(avg_request.success / len(instances))
-            avg_request.fail = int(avg_request.fail / len(instances))
+            avg_request.fail = total - avg_request.success
             print(avg_request)
 
 
@@ -589,7 +605,8 @@ def compute_result_single_instance():
         for alg in algorithms:
             # for instance in range(0):
             for instance in [4]:
-                instance_path = threshold_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+                instance_path = threshold_path + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(
+                    instance)
                 print(instance_path)
                 unzip_output(instance_path, alg)
                 demand = read_and_plot_demand(alg, threshold, instance_path)
@@ -606,10 +623,9 @@ def compute_result_single_instance():
                 fig.savefig("demand_plot_" + alg + "_" + threshold + ".pdf")
                 demand.to_csv("demand_" + alg + "_" + threshold + ".csv")
 
-
-            # get the number of successful / failed requests
-            # for alg in algorithms:
-            #     instance_path = threshold_path + "threshold=" + threshold + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
+                # get the number of successful / failed requests
+                # for alg in algorithms:
+                #     instance_path = threshold_path + "threshold=" + threshold + "/" + alg + "/scenario/" + topology + "/d" + str(agent) + "/" + str(instance)
                 print(instance_path)
                 _, request_regions, request_total, request_overtime = getRequestsOverTime(alg, instance_path)
 
@@ -638,8 +654,10 @@ def compute_result_single_instance():
 
 
 if __name__ == "__main__":
-    compute_alg_capacity()
+    # compute_alg_capacity()
     # compute_result_single_instance
-    # compute_result_table()
-    # plot_topology = "/Users/khoihd/Downloads/test_ordering_tuple/scenario-0-link-delays/topology.ns"
+    compute_result_table()
+    # get_max_delay("/Users/khoihd/Downloads/MAP_test/MAP_timestamp/mini_test")
+    # plot_topology = "/Users/khoihd/Downloads/MAP_khoi_changes/hardcode_comparison_new_config/RC-DIFF/scenario/scale-free-tree/d15/1/topology.ns"
+    # plot_topology = "/Users/khoihd/Downloads/MAP_test/g_stable_tree_4/hardcode_comparison_new_config/RC-DIFF/scenario/random-network/d10/1/topology.ns"
     # graph = generate_plot(plot_topology)
